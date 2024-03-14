@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -161,27 +162,118 @@ static void handle_connection(int client_sockfd)
 static void execute_command(char *command, int client_sockfd)
 {
     char   output_buffer[BUFFER_SIZE];
-    size_t bytes_read;    // Change ssize_t to size_t for send() function
+    size_t bytes_read;
+    FILE  *output_fp = NULL;
+    int    input_fd  = -1;
+    FILE  *pipe_fp;
+    char  *append_redirect_pos;
+    char  *output_redirect_pos;
+    char  *input_redirect_pos;
+    char  *filename;
 
-    // Open pipe for command output
-    FILE *pipe_fp = popen(command, "r");
+    // Initialize pointers for redirection detection
+    append_redirect_pos = strstr(command, ">>");
+    output_redirect_pos = strchr(command, '>');
+    input_redirect_pos  = strchr(command, '<');
+
+    // Handle appending (>>) before checking for simple output redirection (>)
+    if(append_redirect_pos != NULL)
+    {
+        *append_redirect_pos = '\0';                       // Terminate the command string at the append redirect
+        filename             = append_redirect_pos + 2;    // Move past the ">>" symbols
+
+        // Trim whitespace before the filename
+        while(*filename == ' ')
+        {
+            filename++;
+        }
+
+        // Open file for appending
+        output_fp = fopen(filename, "ae");    // Use "a" for append mode
+        if(output_fp == NULL)
+        {
+            perror("File opening failed for appending");
+            exit(EXIT_FAILURE);
+        }
+    }
+    // If no append redirect, check for output redirect '>'
+    else if(output_redirect_pos != NULL)
+    {
+        *output_redirect_pos = '\0';                       // Terminate the command string at the output redirect
+        filename             = output_redirect_pos + 1;    // Move past the ">" symbol
+
+        // Trim whitespace before the filename
+        while(*filename == ' ')
+        {
+            filename++;
+        }
+
+        // Open file for writing (overwrite)
+        output_fp = fopen(filename, "we");    // Use "w" for write mode
+        if(output_fp == NULL)
+        {
+            perror("File opening failed for output redirection");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    // Handle input redirection '<'
+    if(input_redirect_pos != NULL)
+    {
+        *input_redirect_pos = '\0';                      // Terminate the command string at the input redirect
+        filename            = input_redirect_pos + 1;    // Move past the "<" symbol
+
+        // Trim whitespace before the filename
+        while(*filename == ' ')
+        {
+            filename++;
+        }
+
+        // Open file for reading
+        input_fd = open(filename, O_RDONLY | O_CLOEXEC);
+        if(input_fd == -1)
+        {
+            perror("File opening failed for input redirection");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    // Execute the command using popen()
+    pipe_fp = popen(command, "r");
     if(pipe_fp == NULL)
     {
         perror("Command execution failed");
         exit(EXIT_FAILURE);
     }
 
-    // Read command output from pipe and send it to client
+    // Read and handle command output
     while((bytes_read = fread(output_buffer, 1, sizeof(output_buffer), pipe_fp)) > 0)
     {
-        if(send(client_sockfd, output_buffer, bytes_read, 0) == -1)
+        if(output_fp != NULL)
         {
-            perror("Send failed");
-            exit(EXIT_FAILURE);
+            // Redirect output to file
+            fwrite(output_buffer, 1, bytes_read, output_fp);
+        }
+        else
+        {
+            // Send output back to the client
+            if(send(client_sockfd, output_buffer, bytes_read, 0) == -1)
+            {
+                perror("Send failed");
+                exit(EXIT_FAILURE);
+            }
         }
     }
 
-    // Close pipe
+    // Cleanup
+    if(output_fp != NULL)
+    {
+        fclose(output_fp);
+    }
+    if(input_fd != -1)
+    {
+        close(input_fd);
+    }
     if(pclose(pipe_fp) == -1)
     {
         perror("Error closing pipe");
