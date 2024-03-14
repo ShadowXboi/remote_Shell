@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,6 +19,7 @@
 // Function prototypes
 static void handle_connection(int client_sockfd);
 static void execute_command(char *command, int client_sockfd);
+static void signal_handler(int signal_number);
 
 // Main Function
 int main(int argc, const char *argv[])
@@ -26,6 +28,42 @@ int main(int argc, const char *argv[])
     struct sockaddr_in client_addr;
     socklen_t          client_addr_len;
     int                sockfd;
+    pid_t              pid;
+    struct sigaction   sa;
+
+    // Set up the signal handler for SIGINT,SIGTSTP, and SIGQUIT
+#if defined(__clang__)
+    #pragma clang diagnostic push
+    #pragma clang diagnostic ignored "-Wdisabled-macro-expansion"
+#endif
+    sa.sa_handler = signal_handler;
+#if defined(__clang__)
+    #pragma clang diagnostic pop
+#endif
+
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    pid         = getpid();
+    printf("My process ID is: %d\n", pid);
+    printf("Sending SIGUSR1 signal to my own process...\n");
+    // kill(pid, SIGUSR1);
+    printf("To send a signal:\n");
+    printf("\tCtrl+C: Sends the SIGINT signal to the process.\n");
+    printf("\tCtrl+Z: Sends the SIGTSTP signal to the process.\n");
+    printf("\tCtrl+\\: Sends the SIGQUIT signal to the process.\n");
+
+    if(sigaction(SIGINT, &sa, NULL) < 0)
+    {
+        perror("Error setting signal handler for SIGINT");
+    }
+    if(sigaction(SIGTSTP, &sa, NULL) < 0)
+    {
+        perror("Error setting signal handler for SIGTSTP");
+    }
+    if(sigaction(SIGQUIT, &sa, NULL) < 0)
+    {
+        perror("Error setting signal handler for SIGQUIT");
+    }
 
     // Check if the correct no. of arguments are provided
     if(argc != 2)
@@ -46,7 +84,8 @@ int main(int argc, const char *argv[])
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family      = AF_INET;
     server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    server_addr.sin_port        = htons(strtol(argv[1], NULL, MAX_CLIENTS));    // Port number provided as command-line argument
+    // server_addr.sin_port        = htons(strtol(argv[1], NULL, MAX_CLIENTS));    // Port number provided as command-line argument
+    server_addr.sin_port = htons((uint16_t)strtol(argv[1], NULL, MAX_CLIENTS));
 
     // Bind the socket to the server address
     if(bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1)
@@ -62,7 +101,8 @@ int main(int argc, const char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    printf("Server listening on port %ld...\n", strtol(argv[1], NULL, MAX_CLIENTS));
+    printf("Server listening on port %s...\n", argv[1]);
+    // printf("Server listening on port %ld...\n", strtol(argv[1], NULL, MAX_CLIENTS));
 
     // change the current working directory
     if(chdir("../src") == -1)
@@ -154,5 +194,29 @@ static void execute_command(char *command, int client_sockfd)
     {
         perror("Error closing pipe");
         exit(EXIT_FAILURE);
+    }
+}
+
+// Signal handler function
+static void signal_handler(int signal_number)
+{
+    switch(signal_number)
+    {
+        case SIGINT:
+            printf("\nReceived SIGINT, server shutting down...\n");
+            // Add cleanup and shutdown code here
+            exit(EXIT_SUCCESS);
+            // break;
+        case SIGTSTP:
+            // Handle SIGTSTP if needed
+            printf("\nReceived SIGTSTP, action not implemented.\n");
+            break;
+        case SIGQUIT:
+            printf("\nReceived SIGQUIT, server shutting down...\n");
+            // Add cleanup and shutdown code here
+            exit(EXIT_SUCCESS);
+            // break;
+        default:
+            printf("Unhandled signal: %d\n", signal_number);
     }
 }
