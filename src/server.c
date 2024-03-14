@@ -48,11 +48,54 @@ int main(int argc, const char *argv[])
     server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
     server_addr.sin_port        = htons(strtol(argv[1], NULL, MAX_CLIENTS));    // Port number provided as command-line argument
 
+    / Bind the socket to the server address
+    if(bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1)
+    {
+        perror("Binding failed");
+        exit(EXIT_FAILURE);
+    }
+
+    // Start listening for incoming connections
+    if(listen(sockfd, MAX_CLIENTS) == -1)
+    {
+        perror("Listening failed");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("Server listening on port %ld...\n", strtol(argv[1], NULL, MAX_CLIENTS));
+
+    // change the current working directory
+    if(chdir("../src") == -1)
+    {
+        perror(" changing directory failed ");
+        exit(EXIT_FAILURE);
+    }
+
 }
 
 // Function to handle client Information
 static void handle_connection(int client_sockfd)
 {
+    char    buffer[BUFFER_SIZE];
+    ssize_t bytes_received;
+
+    // Receive command from client
+    bytes_received = recv(client_sockfd, buffer, sizeof(buffer), 0);
+    if(bytes_received == -1)
+    {
+        perror("Receive failed");
+        exit(EXIT_FAILURE);
+    }
+    else if(bytes_received == 0)
+    {
+        printf("Client disconnected\n");
+        exit(EXIT_SUCCESS);
+    }
+
+    buffer[bytes_received] = '\0';    // Null-terminate the received data
+
+    // Execute the command and send the output back to the client
+    execute_command(buffer, client_sockfd);
 }
 
 static void execute_command(char *command, int client_sockfd)
