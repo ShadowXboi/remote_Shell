@@ -71,6 +71,34 @@ int main(int argc, const char *argv[])
         exit(EXIT_FAILURE);
     }
 
+    // Accept incoming connections and handle them
+    while(1)
+    {
+        int client_sockfd;
+        client_addr_len = sizeof(client_addr);    // Using the global declaration
+        client_sockfd   = accept(sockfd, (struct sockaddr *)&client_addr, &client_addr_len);
+        if(client_sockfd == -1)
+        {
+            perror("Accept failed");
+            continue;
+        }
+
+        printf("Client connected: %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+
+        // Handle client connection in a separate process
+        if(fork() == 0)
+        {
+            close(sockfd);    // Close the listening socket in the child process
+            while(1)
+            {
+                handle_connection(client_sockfd);    // Handle client connection
+            }
+        }
+        else
+        {
+            close(client_sockfd);    // Close client socket in the parent process
+        }
+    }
 }
 
 // Function to handle client Information
