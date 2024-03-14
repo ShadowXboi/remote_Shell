@@ -1,25 +1,25 @@
+#include <arpa/inet.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <sys/socket.h>
-#include <arpa/inet.h>
+#include <unistd.h>
 
 #define MAX_CLIENTS 10
 #define BUFFER_SIZE 1024
 
 #ifndef SOCK_CLOEXEC
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-macros"
-#define SOCK_CLOEXEC 0
-#pragma GCC diagnostic pop
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wunused-macros"
+    #define SOCK_CLOEXEC 0
+    #pragma GCC diagnostic pop
 #endif
 
 // Function prototypes
 static void handle_connection(int client_sockfd);
 static void execute_command(char *command, int client_sockfd);
 
-//Main Function
+// Main Function
 int main(int argc, const char *argv[])
 {
     struct sockaddr_in server_addr;
@@ -27,7 +27,7 @@ int main(int argc, const char *argv[])
     socklen_t          client_addr_len;
     int                sockfd;
 
-    //Check if the correct no. of arguments are provided
+    // Check if the correct no. of arguments are provided
     if(argc != 2)
     {
         fprintf(stderr, "Usage: %s <port>\n", argv[0]);
@@ -48,7 +48,7 @@ int main(int argc, const char *argv[])
     server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
     server_addr.sin_port        = htons(strtol(argv[1], NULL, MAX_CLIENTS));    // Port number provided as command-line argument
 
-    / Bind the socket to the server address
+    // Bind the socket to the server address
     if(bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1)
     {
         perror("Binding failed");
@@ -156,4 +156,3 @@ static void execute_command(char *command, int client_sockfd)
         exit(EXIT_FAILURE);
     }
 }
-
