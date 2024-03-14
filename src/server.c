@@ -52,19 +52,11 @@ int main(int argc, const char *argv[])
     printf("\tCtrl+Z: Sends the SIGTSTP signal to the process.\n");
     printf("\tCtrl+\\: Sends the SIGQUIT signal to the process.\n");
 
-    if(sigaction(SIGINT, &sa, NULL) < 0)
+    if(sigaction(SIGINT, &sa, NULL) < 0 || sigaction(SIGTSTP, &sa, NULL) < 0 || sigaction(SIGQUIT, &sa, NULL) < 0)
     {
-        perror("Error setting signal handler for SIGINT");
+        perror("Error setting signal handler");
+        exit(EXIT_FAILURE);
     }
-    if(sigaction(SIGTSTP, &sa, NULL) < 0)
-    {
-        perror("Error setting signal handler for SIGTSTP");
-    }
-    if(sigaction(SIGQUIT, &sa, NULL) < 0)
-    {
-        perror("Error setting signal handler for SIGQUIT");
-    }
-
     // Check if the correct no. of arguments are provided
     if(argc != 2)
     {
@@ -206,7 +198,6 @@ static void signal_handler(int signal_number)
             printf("\nReceived SIGINT, server shutting down...\n");
             // Add cleanup and shutdown code here
             exit(EXIT_SUCCESS);
-            // break;
         case SIGTSTP:
             // Handle SIGTSTP if needed
             printf("\nReceived SIGTSTP, action not implemented.\n");
@@ -215,7 +206,6 @@ static void signal_handler(int signal_number)
             printf("\nReceived SIGQUIT, server shutting down...\n");
             // Add cleanup and shutdown code here
             exit(EXIT_SUCCESS);
-            // break;
         default:
             printf("Unhandled signal: %d\n", signal_number);
     }
