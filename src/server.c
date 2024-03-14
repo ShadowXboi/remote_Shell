@@ -100,4 +100,32 @@ static void handle_connection(int client_sockfd)
 
 static void execute_command(char *command, int client_sockfd)
 {
+    char   output_buffer[BUFFER_SIZE];
+    size_t bytes_read;    // Change ssize_t to size_t for send() function
+
+    // Open pipe for command output
+    FILE *pipe_fp = popen(command, "r");
+    if(pipe_fp == NULL)
+    {
+        perror("Command execution failed");
+        exit(EXIT_FAILURE);
+    }
+
+    // Read command output from pipe and send it to client
+    while((bytes_read = fread(output_buffer, 1, sizeof(output_buffer), pipe_fp)) > 0)
+    {
+        if(send(client_sockfd, output_buffer, bytes_read, 0) == -1)
+        {
+            perror("Send failed");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    // Close pipe
+    if(pclose(pipe_fp) == -1)
+    {
+        perror("Error closing pipe");
+        exit(EXIT_FAILURE);
+    }
 }
+
