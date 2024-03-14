@@ -9,7 +9,6 @@
 #define BUFFER_SIZE 1024
 #define DEFAULT_PORT 10
 
-
 #ifndef SOCK_CLOEXEC
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-macros"
@@ -17,11 +16,11 @@
 #pragma GCC diagnostic pop
 #endif
 
-// a struct to hold socket - related information
+// Define a struct to hold socket-related information
 struct SocketInfo
 {
-    int               sockfd;        // socket file descriptor
-    struct sockaddr_in sever_addr;    // Sever address structure
+    int                sockfd;         // Socket file descriptor
+    struct sockaddr_in server_addr;    // Server address structure
 };
 
 // Function prototypes
@@ -84,5 +83,62 @@ int main(int argc, const char *argv[])
         exit(EXIT_FAILURE);
     }
 
+    // Main loop to send commands to the server and receive responses
+    while(1)
+    {
+        ssize_t nread;                // Move this declaration to here
+        size_t  len;                  // Declare len here
+        printf("Enter command: ");    // Prompt user to enter a command
+        fflush(stdout);               // Flush stdout to ensure prompt is displayed
 
+        // Read command from user input
+        if(fgets(command, BUFFER_SIZE, stdin) == NULL)
+        {
+            printf("Error reading command\n");
+            break;
+        }
+
+        // Get the length of the command
+        len = strlen(command);
+        if(len > 0 && command[len - 1] == '\n')
+        {
+            command[len - 1] = '\0';    // Remove newline character
+        }
+
+        // Send command to server
+        if(write(socket_info.sockfd, command, strlen(command)) < 0)
+        {
+            fprintf(stderr, "Write error\n");
+            break;
+        }
+
+        // Read and display the results from the server
+        while((nread = read(socket_info.sockfd, buffer, sizeof(buffer) - 1)) > 0)
+        {
+            buffer[nread] = '\0';                       // Null-terminate the string
+            printf("Server response: %s\n", buffer);    // Print server response
+            break;                                      // Exit the loop after receiving one response
+        }
+
+        // Check if server closed the connection
+        if(nread == 0)
+        {
+            printf("Connection closed by server.\n");    // Print message indicating server closure
+            break;
+        }
+        if(nread == -1)
+        {
+            fprintf(stderr, "Read error\n");    // Check for read error
+            break;
+        }
+    }
+
+    // Cleanup and close the socket
+    if(strcmp(command, "exit") == 0)
+    {
+        // Send a special signal to the server indicating client wants to exit
+        // Then close the socket and terminate the client program
+        cleanup_socket(&socket_info);
+        exit(EXIT_SUCCESS);
+    }
 }
