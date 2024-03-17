@@ -337,7 +337,7 @@ int main(int argc, const char *argv[])
     int                sockfd;
     struct sockaddr_in server_addr;
     struct sockaddr_in client_addr;
-    struct sigaction   sa              = {0};    // Zero-initialize the sigaction struct
+    struct sigaction   sa;
     socklen_t          client_addr_len = sizeof(client_addr);
     memset(&client_addr, 0, sizeof(client_addr));    // zero initialize to client addr before use
 
@@ -349,19 +349,25 @@ int main(int argc, const char *argv[])
     printf("\tCtrl+\\: Sends the SIGQUIT signal to the process.\n");
 
     memset(&sa, 0, sizeof(sa));
-    sa.sa_handler = signal_handler;
-    sigaction(SIGINT, &sa, NULL);
-    // Set up the sigaction struct for SIGCHLD
-    sa.sa_handler = sigchld_handler;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+    sa.sa_handler = signal_handler;               // or sa.sa_sigaction = ... for advanced handling
+    sa.sa_flags   = SA_RESTART | SA_NOCLDSTOP;    // plus any other flags you need
 
-    if(sigaction(SIGCHLD, &sa, NULL) == -1)
+    if(sigaction(SIGINT, &sa, NULL) == -1)
     {
-        perror("sigaction");
+        perror("Error setting signal handler for SIGINT");
         exit(EXIT_FAILURE);
     }
 
+    // Repeat for other signals you're handling, e.g., SIGCHLD
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = sigchld_handler;
+    sa.sa_flags   = SA_RESTART | SA_NOCLDSTOP;
+
+    if(sigaction(SIGCHLD, &sa, NULL) == -1)
+    {
+        perror("Error setting signal handler for SIGCHLD");
+        exit(EXIT_FAILURE);
+    }
     // Validate command line arguments
     if(argc != 2)
     {
@@ -487,15 +493,20 @@ static void handle_connection(int client_sockfd)
 
 static void execute_command(char *command, int client_sockfd)
 {
-    char   output_buffer[BUFFER_SIZE];
-    size_t bytes_read;
-    FILE  *output_fp = NULL;
-    int    input_fd  = -1;
-    FILE  *pipe_fp;
-    char  *append_redirect_pos;
-    char  *output_redirect_pos;
-    char  *input_redirect_pos;
-    char  *filename;
+    char             output_buffer[BUFFER_SIZE];
+    size_t           bytes_read;
+    FILE            *output_fp = NULL;
+    int              input_fd  = -1;
+    FILE            *pipe_fp;
+    char            *append_redirect_pos;
+    char            *output_redirect_pos;
+    char            *input_redirect_pos;
+    char            *filename;
+    struct sigaction sa_temp;
+    struct sigaction sa_old;
+    memset(&sa_temp, 0, sizeof(sa_temp));
+    sa_temp.sa_handler = SIG_DFL;             // Default handler
+    sigaction(SIGCHLD, &sa_temp, &sa_old);    // Save old handler
 
     // Initialize pointers for redirection detection
     append_redirect_pos = strstr(command, ">>");
@@ -605,6 +616,8 @@ static void execute_command(char *command, int client_sockfd)
         perror("Error closing pipe");
         exit(EXIT_FAILURE);
     }
+    // Restore the original SIGCHLD handler
+    sigaction(SIGCHLD, &sa_old, NULL);
 }
 
 // Signal handler function
