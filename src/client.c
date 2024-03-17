@@ -42,7 +42,7 @@ int init_socket(struct SocketInfo *socket_info, const char *server_ip, int serve
     memset(&(socket_info->server_addr), 0, sizeof(socket_info->server_addr));
     socket_info->server_addr.sin_family      = AF_INET;
     socket_info->server_addr.sin_addr.s_addr = inet_addr(server_ip);
-    socket_info->server_addr.sin_port        = htons(server_port);
+    socket_info->server_addr.sin_port        = htons((uint16_t)server_port);
 
     // Connect to the server
     if(connect(socket_info->sockfd, (struct sockaddr *)&(socket_info->server_addr), sizeof(socket_info->server_addr)) == -1)
