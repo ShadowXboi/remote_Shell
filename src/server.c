@@ -314,6 +314,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #define MAX_CLIENTS 10
@@ -333,12 +334,15 @@ static void sigchld_handler(int sig);
 // Main Function
 int main(int argc, const char *argv[])
 {
+    int                sockfd;
     struct sockaddr_in server_addr;
     struct sockaddr_in client_addr;
+    struct sigaction   sa              = {0};    // Zero-initialize the sigaction struct
     socklen_t          client_addr_len = sizeof(client_addr);
-    int                sockfd;
+    memset(&client_addr, 0, sizeof(client_addr));    // zero initialize to client addr before use
+
     // pid_t              pid;
-    struct sigaction sa = {0};    // Zero-initialize the sigaction struct
+
     printf("To send a signal:\n");
     printf("\tCtrl+C: Sends the SIGINT signal to the process.\n");
     printf("\tCtrl+Z: Sends the SIGTSTP signal to the process.\n");
