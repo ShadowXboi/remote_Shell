@@ -1,10 +1,10 @@
-#include <arpa/inet.h>     // Declarations for internet operations
-#include <netinet/in.h>    // Definitions for internet operations
-#include <stdio.h>         // Standard input/output library
-#include <stdlib.h>        // Standard library definitions
-#include <string.h>        // String manipulation functions
-#include <sys/socket.h>    // Socket functions
-#include <unistd.h>        // Standard symbolic constants and types
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 #define BUFFER_SIZE 1024
 #define DEFAULT_PORT 10
@@ -19,8 +19,8 @@
 // Define a struct to hold socket-related information
 struct SocketInfo
 {
-    int                sockfd;         // Socket file descriptor
-    struct sockaddr_in server_addr;    // Server address structure
+    int                sockfd;
+    struct sockaddr_in server_addr;
 };
 
 // Function prototypes
@@ -60,15 +60,16 @@ int init_socket(struct SocketInfo *socket_info, const char *server_ip, int serve
 // function to clean up the socket
 void cleanup_socket(const struct SocketInfo *socket_info)
 {
-    close(socket_info->sockfd);    // close the socket
+    // close the socket
+    close(socket_info->sockfd);
 }
 
 // Main function
 int main(int argc, const char *argv[])
 {
     struct SocketInfo socket_info;
-    char              command[BUFFER_SIZE];    // buffer to store user command
-    char              buffer[BUFFER_SIZE];     // buffer to store sever response
+    char              command[BUFFER_SIZE];
+    char              buffer[BUFFER_SIZE];
 
     // check if the correct no of command-line arguments are provided
     if(argc != 3)
@@ -86,10 +87,10 @@ int main(int argc, const char *argv[])
     // Main loop to send commands to the server and receive responses
     while(1)
     {
-        ssize_t nread;                // Move this declaration to here
-        size_t  len;                  // Declare len here
-        printf("Enter command: ");    // Prompt user to enter a command
-        fflush(stdout);               // Flush stdout to ensure prompt is displayed
+        ssize_t nread;
+        size_t  len;
+        printf("Enter command: ");
+        fflush(stdout);
 
         // Read command from user input
         if(fgets(command, BUFFER_SIZE, stdin) == NULL)
@@ -98,11 +99,19 @@ int main(int argc, const char *argv[])
             break;
         }
 
-        // Get the length of the command
+        // Remove the newline character at the end of the command, if present
         len = strlen(command);
         if(len > 0 && command[len - 1] == '\n')
         {
-            command[len - 1] = '\0';    // Remove newline character
+            command[len - 1] = '\0';
+        }
+
+        // Check for the "exit" command before sending anything to the server
+        if(strcmp(command, "exit") == 0)
+        {
+            cleanup_socket(&socket_info);
+            printf("Disconnecting from server...\n");
+            exit(EXIT_SUCCESS);
         }
 
         // Send command to server
@@ -113,32 +122,21 @@ int main(int argc, const char *argv[])
         }
 
         // Read and display the results from the server
-        while((nread = read(socket_info.sockfd, buffer, sizeof(buffer) - 1)) > 0)
+        nread = read(socket_info.sockfd, buffer, sizeof(buffer) - 1);
+        if(nread > 0)
         {
-            buffer[nread] = '\0';                       // Null-terminate the string
-            printf("Server response: %s\n", buffer);    // Print server response
-            break;                                      // Exit the loop after receiving one response
+            buffer[nread] = '\0';    // Null-terminate the string
+            printf("Server response: %s\n", buffer);
         }
-
-        // Check if server closed the connection
-        if(nread == 0)
+        else if(nread == 0)
         {
-            printf("Connection closed by server.\n");    // Print message indicating server closure
-            break;
+            printf("Connection closed by server.\n");
+            break;    // Exit the loop if the connection is closed
         }
-        if(nread == -1)
+        else    // nread < 0
         {
-            fprintf(stderr, "Read error\n");    // Check for read error
-            break;
+            fprintf(stderr, "Read error\n");
+            break;    // Exit the loop on read error
         }
-    }
-
-    // Cleanup and close the socket
-    if(strcmp(command, "exit") == 0)
-    {
-        // Send a special signal to the server indicating client wants to exit
-        // Then close the socket and terminate the client program
-        cleanup_socket(&socket_info);
-        exit(EXIT_SUCCESS);
     }
 }
