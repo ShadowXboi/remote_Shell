@@ -104,7 +104,8 @@ int main(int argc, const char *argv[])
     // Accept incoming connections and handle them
     while(1)
     {
-        int client_sockfd = accept(sockfd, (struct sockaddr *)&client_addr, &client_addr_len);
+        pid_t pid;
+        int   client_sockfd = accept(sockfd, (struct sockaddr *)&client_addr, &client_addr_len);
         if(client_sockfd == -1)
         {
             perror("Accept failed");
@@ -113,23 +114,45 @@ int main(int argc, const char *argv[])
 
         printf("Client connected: %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
 
-        // Handle client connection in a separate process
-        if(fork() == 0)
+        pid = fork();
+        if(pid == 0)
         {
-            // Close the listening socket in the child process
+            // In child process
             close(sockfd);
             while(1)
             {
                 // Handle client connection
                 handle_connection(client_sockfd);
+                // Ensure we close the socket descriptor before exiting
             }
+        }
+        else if(pid > 0)
+        {
+            // In parent process
+            close(client_sockfd);    // Parent doesn't need this
         }
         else
         {
-            // Close client socket in the parent process
-            close(client_sockfd);
+            perror("Fork failed");
         }
     }
+
+    // Handle client connection in a separate process
+    //        if(fork() == 0)
+    //        {
+    //            // Close the listening socket in the child process
+    //            close(sockfd);
+    //            while(1)
+    //            {
+    //                // Handle client connection
+    //                handle_connection(client_sockfd);
+    //            }
+    //        }
+    //        else
+    //        {
+    //            // Close client socket in the parent process
+    //            close(client_sockfd);
+    //        }
 }
 
 static void sigchld_handler(int sig)
@@ -170,16 +193,19 @@ static void handle_connection(int client_sockfd)
 static void execute_command(char *command, int client_sockfd)
 {
     char             output_buffer[BUFFER_SIZE];
-    size_t           bytes_read;
     FILE            *output_fp = NULL;
     int              input_fd  = -1;
     FILE            *pipe_fp;
+    size_t           bytes_read;
     char            *append_redirect_pos;
     char            *output_redirect_pos;
     char            *input_redirect_pos;
     char            *filename;
     struct sigaction sa_temp;
     struct sigaction sa_old;
+    int              is_gcc_command;
+
+    is_gcc_command = strncmp(command, "gcc", 3) == 0 ? 1 : 0;
 
     memset(&sa_temp, 0, sizeof(sa_temp));
     sa_temp.sa_handler = SIG_DFL;             // Default handler
@@ -190,46 +216,20 @@ static void execute_command(char *command, int client_sockfd)
     output_redirect_pos = strchr(command, '>');
     input_redirect_pos  = strchr(command, '<');
 
-    // Handle appending (>>) before checking for simple output redirection (>)
-    if(append_redirect_pos != NULL)
+    // Handle appending (>>) and simple output redirection ('>')
+    if(append_redirect_pos != NULL || output_redirect_pos != NULL)
     {
-        // Terminate the command string at the append redirect
-        *append_redirect_pos = '\0';
+        char *redirect_pos = append_redirect_pos ? append_redirect_pos : output_redirect_pos;
+        int   append       = append_redirect_pos != NULL;
 
-        // Move past the ">>" symbols
-        filename = append_redirect_pos + 2;
-
-        // Trim whitespace before the filename
+        *redirect_pos = '\0';
+        filename      = redirect_pos + (append ? 2 : 1);
         while(*filename == ' ')
         {
             filename++;
         }
 
-        // Open file for appending
-        output_fp = fopen(filename, "ae");
-        if(output_fp == NULL)
-        {
-            perror("File opening failed for appending");
-            exit(EXIT_FAILURE);
-        }
-    }
-    // If no append redirect, check for output redirect '>'
-    else if(output_redirect_pos != NULL)
-    {
-        // Terminate the command string at the output redirect
-        *output_redirect_pos = '\0';
-
-        // Move past the ">" symbol
-        filename = output_redirect_pos + 1;
-
-        // Trim whitespace before the filename
-        while(*filename == ' ')
-        {
-            filename++;
-        }
-
-        // Open file for writing (overwrite)
-        output_fp = fopen(filename, "we");
+        output_fp = fopen(filename, append ? "a" : "w");
         if(output_fp == NULL)
         {
             perror("File opening failed for output redirection");
@@ -237,22 +237,16 @@ static void execute_command(char *command, int client_sockfd)
         }
     }
 
-    // Handle input redirection '<'
+    // Handle input redirection ('<')
     if(input_redirect_pos != NULL)
     {
-        // Terminate the command string at the input redirect
         *input_redirect_pos = '\0';
-
-        // Move past the "<" symbol
-        filename = input_redirect_pos + 1;
-
-        // Trim whitespace before the filename
+        filename            = input_redirect_pos + 1;
         while(*filename == ' ')
         {
             filename++;
         }
 
-        // Open file for reading
         input_fd = open(filename, O_RDONLY | O_CLOEXEC);
         if(input_fd == -1)
         {
@@ -261,7 +255,7 @@ static void execute_command(char *command, int client_sockfd)
         }
     }
 
-    // Execute the command using popen()
+    // Execute the command
     pipe_fp = popen(command, "r");
     if(pipe_fp == NULL)
     {
@@ -269,26 +263,59 @@ static void execute_command(char *command, int client_sockfd)
         exit(EXIT_FAILURE);
     }
 
-    // Read and handle command output
-    while((bytes_read = fread(output_buffer, 1, sizeof(output_buffer), pipe_fp)) > 0)
+    // Special handling for gcc commands
+    if(is_gcc_command)
     {
-        if(output_fp != NULL)
+        int execution_status = 0;
+        execution_status     = pclose(pipe_fp);    // Close the compiler process and get status
+        pipe_fp              = NULL;               // Avoid double closing
+
+        if(WIFEXITED(execution_status) && WEXITSTATUS(execution_status) == 0)
         {
-            // Redirect output to file
-            fwrite(output_buffer, 1, bytes_read, output_fp);
+            // Compilation successful; execute the compiled program
+            pipe_fp = popen("./test.out", "r");
         }
         else
         {
-            // Send output back to the client
-            if(send(client_sockfd, output_buffer, bytes_read, 0) == -1)
-            {
-                perror("Send failed");
-                exit(EXIT_FAILURE);
-            }
+            const char *error_msg = "GCC compilation failed.\n";
+            send(client_sockfd, error_msg, strlen(error_msg), 0);
+            goto cleanup;
         }
     }
 
-    // Cleanup
+    // Read and handle command output
+    //    while((bytes_read = fread(output_buffer, 1, sizeof(output_buffer), pipe_fp)) > 0)
+    //    {
+    //        if(output_fp != NULL)
+    //        {
+    //            // Redirect output to file
+    //            fwrite(output_buffer, 1, bytes_read, output_fp);
+    //        }
+    //        else
+    //        {
+    //            // Send output back to the client
+    //            if(send(client_sockfd, output_buffer, bytes_read, 0) == -1)
+    //            {
+    //                perror("Send failed");
+    //                exit(EXIT_FAILURE);
+    //            }
+    //        }
+    //    }
+    // Read and send command or compilation output back to the client
+    while((bytes_read = fread(output_buffer, 1, sizeof(output_buffer) - 1, pipe_fp)) > 0)
+    {
+        // Ensure the buffer is null-terminated to safely work with functions expecting strings
+        output_buffer[bytes_read] = '\0';
+
+        // Send the read data to the client
+        if(send(client_sockfd, output_buffer, bytes_read, 0) == -1)
+        {
+            perror("Send failed");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+cleanup:
     if(output_fp != NULL)
     {
         fclose(output_fp);
@@ -297,11 +324,11 @@ static void execute_command(char *command, int client_sockfd)
     {
         close(input_fd);
     }
-    if(pclose(pipe_fp) == -1)
+    if(pipe_fp != NULL && pclose(pipe_fp) == -1)
     {
         perror("Error closing pipe");
-        exit(EXIT_FAILURE);
     }
+
     // Restore the original SIGCHLD handler
     sigaction(SIGCHLD, &sa_old, NULL);
 }
