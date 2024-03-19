@@ -10,6 +10,7 @@
 
 #define MAX_CLIENTS 10
 #define BUFFER_SIZE 1024
+#define PORT 65535
 
 // Ensure SOCK_CLOEXEC is defined, using conditional compilation
 #ifndef SOCK_CLOEXEC
@@ -25,6 +26,8 @@ static void sigchld_handler(int sig);
 // Main Function
 int main(int argc, const char *argv[])
 {
+    long               psort;
+    char              *endptr;
     int                sockfd;
     struct sockaddr_in server_addr;
     struct sockaddr_in client_addr;
@@ -61,6 +64,15 @@ int main(int argc, const char *argv[])
     if(argc != 2)
     {
         fprintf(stderr, "Usage: %s <port>\n", argv[0]);
+        exit(EXIT_FAILURE);
+    }
+
+    // Validate the port number
+
+    psort = strtol(argv[1], &endptr, MAX_CLIENTS);
+    if(*endptr != '\0' || psort <= 0 || psort > PORT)
+    {
+        fprintf(stderr, "Invalid port number. Please specify a port number between 1 and 65535.\n");
         exit(EXIT_FAILURE);
     }
 
