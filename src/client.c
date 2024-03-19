@@ -133,7 +133,7 @@ int main(int argc, const char *argv[])
             printf("Connection closed by server.\n");
             break;    // Exit the loop if the connection is closed
         }
-        else    // nread < 0
+        else
         {
             fprintf(stderr, "Read error\n");
             break;    // Exit the loop on read error
